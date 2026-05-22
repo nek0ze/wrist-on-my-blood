@@ -1,0 +1,178 @@
+
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.SceneManagement;wsdfdswfsdfwsdf
+using UnityEngine.UI;
+
+public enum GenerationState
+{
+    Idle,
+    GeneratingRooms,
+    GeneratingLighting,
+    GeneratingSpawn,
+    GeneratingExit,
+    GeneratingBarrier
+}
+
+public class GenerationManager : MonoBehaviour
+{
+    [Header("References")]
+    [SerializeField] Transform WorldGrid; // The Parent of our World
+
+    [SerializeField] List<GameObject> RoomTypes; // The prefab that spawns in our world grid
+
+    [SerializeField] List<GameObject> LightTypes; // The prefabs that spawn in our rooms to give light
+
+    [SerializeField] int mapSize; // The size of the map
+
+    [SerializeField] Button SpawnButton;
+
+    [SerializeField] GameObject E_Room; // The Empty Room type
+
+    [SerializeField] GameObject B_Room; // The Barrier Room type
+
+    [SerializeField] GameObject SpawnRoom, ExitRoom;
+
+    public List<GameObject> GeneratedRooms; // Storing the rooms that were already generated.
+
+    [SerializeField] GameObject PlayerObject, MainCameraObject;
+
+    [SerializeField] GameObject CameraSpawn;
+
+    [Header("Settings")]
+    public int mapEmptiness; // The chance of an E_Room spawning in.
+
+    public int mapBrightness;
+
+    private int mapSizeSqr; // The square root of the map size
+
+    private float currentPosX, currentPosZ, currentPosTracker, currentRoom;
+
+    public float roomSize = 10;
+
+    private Vector3 currentPos; // The current position of the room that the script will generate
+
+    public GenerationState currentState;
+
+    public void Start()
+    {
+        mapSize = (int)Mathf.Pow(Random.Range(5, 7), 4);
+        mapBrightness = Random.Range(3, 6);
+        mapEmptiness = Random.Range(6, 10);
+    }
+
+    private void Update()
+    {
+        mapSizeSqr = (int)Mathf.Sqrt(mapSize);
+    }
+
+    public void ReloadWorld()
+    {
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name); // Reload the currently loaded scene.
+    }
+
+    public void GenerateWorld()
+    {
+        for (int i = 0; i < mapEmptiness; i++)
+        {
+            RoomTypes.Add(E_Room); // Adds empty rooms to the Room Types array.
+        }
+
+        SpawnButton.GetComponent<Button>().interactable = false;
+
+        GenerateBarrier(); // Generate the initial barrier around the map
+
+        for (int state = 0; state < 6; state++)
+        {
+            for (int i = 0; i < mapSize; i++)
+            {
+                if (currentPosTracker == mapSizeSqr) // Move the position back to the beginning of the grid, so it can go upwords
+                {
+                    currentPosX = 0;
+                    currentPosTracker = 0;
+
+                    currentPosZ += roomSize;
+                }
+
+                currentPos = new Vector3(currentPosX, 0, currentPosZ); // Pass in our positions
+
+                switch (currentState)
+                {
+                    case GenerationState.GeneratingRooms:
+                        GeneratedRooms.Add(Instantiate(RoomTypes[Random.Range(0, RoomTypes.Count)], currentPos, Quaternion.identity, WorldGrid)); // Instantiates the room type at the current Pos.
+                        break;
+
+                    case GenerationState.GeneratingLighting:
+                        int lightSpawn = Random.Range(-1, mapBrightness);
+
+                        if (lightSpawn == 0)
+                        {
+                            Instantiate(LightTypes[Random.Range(0, LightTypes.Count)], currentPos + new Vector3(0f, 9.5f, 0f), Quaternion.Euler(new Vector3(0, 0, 0)), WorldGrid); // Instantiates the room type at the current Pos.
+                        }
+                        break;
+                }
+
+                currentRoom++;
+                currentPosTracker++; // Keeps track of the position X, without using the room size.
+                currentPosX += roomSize; // Adds more position to the currentPosX, which makes it go to the right a bit more.
+            }
+
+            NextState();
+            // Handle the Exit and Spawn rooms, which are not dependant on the world grid, but instead, the position of the room that they replace.
+            switch (currentState)
+            {
+                case GenerationState.GeneratingExit:
+                    int roomToReplace = Random.Range(0, GeneratedRooms.Count);
+                    GameObject exitRoom = Instantiate(ExitRoom, GeneratedRooms[roomToReplace].transform.position, Quaternion.identity, WorldGrid);
+                    Destroy(GeneratedRooms[roomToReplace]);
+                    GeneratedRooms[roomToReplace] = exitRoom;
+                    break;
+
+                case GenerationState.GeneratingSpawn:
+                    int _roomToReplace = Random.Range(0, GeneratedRooms.Count);
+                    GameObject spawnRoom = Instantiate(SpawnRoom, GeneratedRooms[_roomToReplace].transform.position, Quaternion.identity, WorldGrid);
+                    Destroy(GeneratedRooms[_roomToReplace]);
+                    GeneratedRooms[_roomToReplace] = spawnRoom;
+                    break;
+            }
+        }
+    }
+
+    public void SpawnPlayer()
+    {
+        PlayerObject.SetActive(false);
+        PlayerObject.transform.position = new Vector3(SpawnRoom.transform.position.x, 1.8f, SpawnRoom.transform.position.z);
+        PlayerObject.SetActive(true);
+        CameraSpawn.SetActive(false);
+        MainCameraObject.SetActive(true);
+    }
+
+    public void NextState()
+    {
+        currentState++; // Goes to the next state
+
+        // Resetting our variables
+        currentRoom = 0;
+        currentPosX = 0;
+        currentPosZ = 0;
+        currentPosTracker = 0;
+        currentPos = Vector3.zero;
+    }
+
+    public void WinGame()
+    {
+        MainCameraObject.SetActive(true);
+        PlayerObject.SetActive(false);
+        Debug.Log("Player has passed the level");
+    }
+
+    public void GenerateBarrier() // Generate the barrier around the map
+    {
+        for (int i = 0; i < mapSizeSqr; i++)
+        {
+            Instantiate(B_Room, new Vector3(i * roomSize, 0, -roomSize), Quaternion.identity, WorldGrid); // Bottom barrier
+            Instantiate(B_Room, new Vector3(i * roomSize, 0, mapSizeSqr * roomSize), Quaternion.identity, WorldGrid); // Top barrier
+            Instantiate(B_Room, new Vector3(-roomSize, 0, i * roomSize), Quaternion.identity, WorldGrid); // Left barrier
+            Instantiate(B_Room, new Vector3(mapSizeSqr * roomSize, 0, i * roomSize), Quaternion.identity, WorldGrid); // Right barrier
+        }
+    }
